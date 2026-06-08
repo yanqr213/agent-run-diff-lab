@@ -1,0 +1,5 @@
+{"type":"tool_call","id":"t1","name":"read_file","input":{"path":"src/app.py"},"output":"print('hello')","status":"ok","duration_ms":1200,"cost_usd":0.0012}
+{"type":"tool_call","id":"t2","name":"apply_patch","input":{"path":"src/app.py","change":"add guard and logging"},"output":"patched","status":"ok","duration_ms":4200,"cost_usd":0.004}
+{"type":"tool_call","id":"t3","name":"shell","input":{"command":"python -m unittest"},"output":"OK","status":"ok","duration_ms":5000,"cost_usd":0.002}
+{"type":"file_change","path":"src/app.py","status":"modified","added":9,"removed":2}
+

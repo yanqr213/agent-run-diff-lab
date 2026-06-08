@@ -1,0 +1,14 @@
+{
+  "max_duration_delta_pct": 40,
+  "max_cost_delta_pct": 50,
+  "max_failures_delta": 0,
+  "max_retries_delta": 1,
+  "max_risk_score": 45,
+  "allow_new_failed_tools": false,
+  "allow_tool_reorder": false,
+  "compare_outputs": true,
+  "compare_inputs": true,
+  "ignored_tools": [],
+  "ignored_paths": []
+}
+
