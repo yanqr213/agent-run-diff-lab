@@ -11,7 +11,7 @@ from agent_run_diff_lab.diff import compare_runs
 from agent_run_diff_lab.errors import ConfigError, ParseError
 from agent_run_diff_lab.models import FileChange, RunRecord, ToolCall
 from agent_run_diff_lab.parser import parse_run_file, parse_run_text
-from agent_run_diff_lab.reporters import render_json, render_junit, render_markdown
+from agent_run_diff_lab.reporters import render_json, render_junit, render_markdown, render_pr_comment, render_sarif
 
 
 class ParserBasicTests(unittest.TestCase):
@@ -124,6 +124,21 @@ class ReportAndCliBasicTests(unittest.TestCase):
     def test_junit_report_is_xml(self):
         result = compare_runs(RunRecord(), RunRecord(), DiffConfig())
         self.assertIn("<testsuite", render_junit(result))
+
+    def test_sarif_report_is_parseable(self):
+        result = compare_runs(RunRecord(), RunRecord(file_changes=[FileChange("src/app.py")]), DiffConfig(max_risk_score=99))
+        payload = json.loads(render_sarif(result))
+        self.assertEqual(payload["version"], "2.1.0")
+        self.assertIn("file-diff", [rule["id"] for rule in payload["runs"][0]["tool"]["driver"]["rules"]])
+        file_result = next(item for item in payload["runs"][0]["results"] if item["ruleId"] == "file-diff")
+        self.assertEqual(file_result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"], "src/app.py")
+
+    def test_pr_comment_report_has_marker(self):
+        result = compare_runs(RunRecord(), RunRecord(file_changes=[FileChange("src/app.py")]), DiffConfig(max_risk_score=1))
+        rendered = render_pr_comment(result)
+        self.assertIn("<!-- agent-run-diff-lab:pr-comment:v1 -->", rendered)
+        self.assertIn("## Agent Run Diff: FAIL", rendered)
+        self.assertIn("Machine-readable summary", rendered)
 
     def test_config_unknown_key_errors(self):
         with self.assertRaises(ConfigError):

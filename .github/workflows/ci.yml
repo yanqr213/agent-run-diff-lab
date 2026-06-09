@@ -22,3 +22,10 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Smoke CLI
         run: agent-run-diff-lab examples/baseline.json examples/baseline.json --config examples/agent-run-diff-lab.config.json --format json
+      - name: Smoke CI-native reports
+        run: |
+          mkdir -p reports
+          agent-run-diff-lab examples/baseline.json examples/candidate.json --config examples/agent-run-diff-lab.config.json --format sarif --output reports/agent-run-diff.sarif || test $? -eq 1
+          python -m json.tool reports/agent-run-diff.sarif > /dev/null
+          agent-run-diff-lab examples/baseline.json examples/candidate.json --config examples/agent-run-diff-lab.config.json --format pr-comment --output reports/agent-run-diff-comment.md || test $? -eq 1
+          grep "agent-run-diff-lab:pr-comment" reports/agent-run-diff-comment.md

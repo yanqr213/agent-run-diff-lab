@@ -9,7 +9,7 @@ from .config import apply_list_overrides, load_config
 from .diff import compare_runs
 from .errors import AgentRunDiffError
 from .parser import parse_run_file
-from .reporters import render_junit, render_json, render_markdown
+from .reporters import render_junit, render_json, render_markdown, render_pr_comment, render_sarif
 
 EXIT_PASS = 0
 EXIT_GATE_FAILED = 1
@@ -24,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("baseline", help="Baseline transcript path (.json or .jsonl)")
     parser.add_argument("candidate", help="Candidate transcript path (.json or .jsonl)")
     parser.add_argument("--config", help="JSON config path")
-    parser.add_argument("--format", choices=["markdown", "json", "junit"], default="markdown")
+    parser.add_argument("--format", choices=["markdown", "json", "junit", "sarif", "pr-comment"], default="markdown")
     parser.add_argument("--output", "-o", help="Write report to path instead of stdout")
     parser.add_argument("--max-duration-delta-pct", type=float)
     parser.add_argument("--max-cost-delta-pct", type=float)
@@ -90,9 +90,12 @@ def _render(result, fmt: str) -> str:
         return render_json(result)
     if fmt == "junit":
         return render_junit(result)
+    if fmt == "sarif":
+        return render_sarif(result)
+    if fmt == "pr-comment":
+        return render_pr_comment(result)
     return render_markdown(result)
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

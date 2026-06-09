@@ -1,6 +1,6 @@
 # agent-run-diff-lab
 
-面向 AI agent 开发者的离线运行记录差异分析与 CI gate 工具。它可以比较 Codex、Claude Code、MCP 或自研 agent 的两次 run transcript，找出工具调用顺序变化、输入输出差异、失败和重试变化、耗时和成本变化、文件变更差异以及风险评分变化，并输出 Markdown、JSON 或 JUnit 报告。
+面向 AI agent 开发者的离线运行记录差异分析与 CI gate 工具。它可以比较 Codex、Claude Code、MCP 或自研 agent 的两次 run transcript，找出工具调用顺序变化、输入输出差异、失败和重试变化、耗时和成本变化、文件变更差异以及风险评分变化，并输出 Markdown、JSON、JUnit、SARIF 或 PR comment 报告。
 
 本项目只依赖 Python 标准库，支持 Python 3.9+，可以作为命令行工具使用，也可以作为 Python API 导入。
 
@@ -8,7 +8,8 @@
 
 - 升级 agent prompt、model 或工具实现后，比较候选运行与基线运行是否出现异常。
 - 在 CI 中阻止高风险 agent 行为，例如新增失败工具调用、成本暴涨、耗时暴涨、触碰敏感路径。
-- 为 agent 评测系统生成结构化 JSON 或 JUnit 报告，接入现有质量平台。
+- 为 agent 评测系统生成结构化 JSON、JUnit 或 SARIF 报告，接入现有质量平台。
+- 把候选 run 的 PASS/FAIL 摘要直接写入 GitHub PR 评论或 Actions Step Summary。
 - 离线审计两份 transcript，不上传代码、token 或日志到外部服务。
 
 ## 安装
@@ -50,6 +51,8 @@ ardl BASELINE CANDIDATE [options]
 agent-run-diff-lab examples/baseline.json examples/candidate.json
 agent-run-diff-lab examples/baseline.json examples/candidate.json --format json -o reports/diff.json
 agent-run-diff-lab examples/baseline.json examples/candidate.json --format junit -o reports/agent-run-diff.xml
+agent-run-diff-lab examples/baseline.json examples/candidate.json --format sarif -o reports/agent-run-diff.sarif
+agent-run-diff-lab examples/baseline.json examples/candidate.json --format pr-comment -o reports/agent-run-diff-comment.md
 agent-run-diff-lab examples/baseline.json examples/candidate.json --max-risk-score 30 --max-cost-delta-pct 20
 ```
 
@@ -58,7 +61,7 @@ agent-run-diff-lab examples/baseline.json examples/candidate.json --max-risk-sco
 | 参数 | 说明 |
 | --- | --- |
 | `--config PATH` | 读取 JSON 配置文件 |
-| `--format markdown,json,junit` | 输出格式，默认 Markdown |
+| `--format markdown,json,junit,sarif,pr-comment` | 输出格式，默认 Markdown |
 | `--output PATH` | 将报告写入文件 |
 | `--max-duration-delta-pct N` | 候选运行耗时增长百分比上限 |
 | `--max-cost-delta-pct N` | 候选运行成本增长百分比上限 |
@@ -85,7 +88,7 @@ agent-run-diff-lab examples/baseline.json examples/candidate.json --max-risk-sco
 
 ```python
 from agent_run_diff_lab import DiffConfig, compare_runs, parse_run_file
-from agent_run_diff_lab.reporters import render_markdown
+from agent_run_diff_lab.reporters import render_markdown, render_pr_comment, render_sarif
 
 baseline = parse_run_file("examples/baseline.json")
 candidate = parse_run_file("examples/candidate.json")
@@ -95,6 +98,8 @@ result = compare_runs(baseline, candidate, config)
 print(result.passed)
 print(result.risk_score)
 print(render_markdown(result))
+print(render_pr_comment(result))
+print(render_sarif(result))
 ```
 
 ## 输入格式
@@ -207,15 +212,39 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install .
-      - run: agent-run-diff-lab baseline.json candidate.json --format junit -o reports/agent-run-diff.xml
+      - run: |
+          mkdir -p reports
+          agent-run-diff-lab baseline.json candidate.json --format junit -o reports/agent-run-diff.xml
+          agent-run-diff-lab baseline.json candidate.json --format sarif -o reports/agent-run-diff.sarif
+          agent-run-diff-lab baseline.json candidate.json --format pr-comment -o reports/agent-run-diff-comment.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: agent-run-diff-report
-          path: reports/agent-run-diff.xml
+          path: reports
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: reports/agent-run-diff.sarif
 ```
 
 本仓库自带 `.github/workflows/ci.yml`，会在 Python 3.9 到 3.13 上运行 unittest。
+
+PR 评论或 Step Summary：
+
+```yaml
+- name: Build agent run diff PR comment
+  run: agent-run-diff-lab baseline.json candidate.json --format pr-comment -o reports/agent-run-diff-comment.md
+- name: Comment on PR
+  if: github.event_name == 'pull_request'
+  run: gh pr comment "$PR_NUMBER" --body-file reports/agent-run-diff-comment.md
+  env:
+    GH_TOKEN: ${{ github.token }}
+    PR_NUMBER: ${{ github.event.pull_request.number }}
+- name: Append step summary
+  if: always()
+  run: cat reports/agent-run-diff-comment.md >> "$GITHUB_STEP_SUMMARY"
+```
 
 ## 限制
 
@@ -272,7 +301,8 @@ The project uses only the Python standard library at runtime and supports Python
 
 - Compare a candidate agent run against a baseline after changing prompts, models, tools, or orchestration code.
 - Block risky regressions in CI, such as new failed tool calls, cost spikes, runtime spikes, or sensitive file changes.
-- Produce Markdown, JSON, or JUnit reports for engineering review and quality dashboards.
+- Produce Markdown, JSON, JUnit, SARIF, or PR comment reports for engineering review and quality dashboards.
+- Upload SARIF to GitHub Code Scanning or post a concise PR comment / Actions step summary.
 - Audit transcripts offline without sending logs, code, or secrets to external services.
 
 ## Installation
@@ -308,6 +338,8 @@ Examples:
 agent-run-diff-lab examples/baseline.json examples/candidate.json
 agent-run-diff-lab examples/baseline.json examples/candidate.json --format json -o reports/diff.json
 agent-run-diff-lab examples/baseline.json examples/candidate.json --format junit -o reports/agent-run-diff.xml
+agent-run-diff-lab examples/baseline.json examples/candidate.json --format sarif -o reports/agent-run-diff.sarif
+agent-run-diff-lab examples/baseline.json examples/candidate.json --format pr-comment -o reports/agent-run-diff-comment.md
 agent-run-diff-lab examples/baseline.json examples/candidate.json --max-risk-score 30 --max-cost-delta-pct 20
 ```
 
@@ -323,13 +355,15 @@ Exit codes:
 
 ```python
 from agent_run_diff_lab import DiffConfig, compare_runs, parse_run_file
-from agent_run_diff_lab.reporters import render_markdown
+from agent_run_diff_lab.reporters import render_markdown, render_pr_comment, render_sarif
 
 baseline = parse_run_file("examples/baseline.json")
 candidate = parse_run_file("examples/candidate.json")
 result = compare_runs(baseline, candidate, DiffConfig(max_risk_score=45))
 print(result.passed)
 print(render_markdown(result))
+print(render_pr_comment(result))
+print(render_sarif(result))
 ```
 
 ## Input Format
@@ -372,11 +406,15 @@ Budget gates include duration percentage delta, cost percentage delta, failure d
 
 ## CI
 
-Use JUnit output to integrate with CI systems:
+Use JUnit, SARIF, and PR comment output to integrate with CI systems:
 
 ```bash
 agent-run-diff-lab baseline.json candidate.json --format junit -o reports/agent-run-diff.xml
+agent-run-diff-lab baseline.json candidate.json --format sarif -o reports/agent-run-diff.sarif
+agent-run-diff-lab baseline.json candidate.json --format pr-comment -o reports/agent-run-diff-comment.md
 ```
+
+Upload `agent-run-diff.sarif` with `github/codeql-action/upload-sarif@v3` to show run-diff findings in GitHub Code Scanning. Append `agent-run-diff-comment.md` to `$GITHUB_STEP_SUMMARY` or post it with `gh pr comment --body-file`.
 
 The repository includes a GitHub Actions workflow that runs the unittest suite on Python 3.9 through 3.13.
 
@@ -397,4 +435,3 @@ PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
 Keep runtime dependencies in the Python standard library where possible. Add parser tests for new transcript shapes and gate tests for behavior changes.
-
